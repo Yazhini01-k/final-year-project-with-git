@@ -63,6 +63,11 @@ class ResumeUploadView(generics.CreateAPIView):
         resume.extracted_experience = parsed_data['extracted_experience']
         resume.extracted_contact_info = parsed_data['extracted_contact_info']
         
+        # NEW: Store additional extracted data
+        resume.extracted_projects = parsed_data['extracted_projects']
+        resume.extracted_certificates = parsed_data['extracted_certificates']
+        resume.extracted_achievements = parsed_data['extracted_achievements']
+        
         # Create feature vector
         vectorizer = FeatureVectorizer(max_features=settings.TF_IDF_MAX_FEATURES)
         try:
@@ -146,7 +151,150 @@ class ResumeUploadView(generics.CreateAPIView):
         except:
             analysis.sentence_count = text.count('.') + text.count('!') + text.count('?')
         
-        # Completeness score (based on sections present)
+        # Calculate individual scores (0-100)
+        skills_score = self._calculate_skills_score(resume)
+        projects_score = self._calculate_projects_score(resume)
+        education_score = self._calculate_education_score(resume)
+        structure_score = self._calculate_structure_score(resume)
+        cert_score = self._calculate_certification_score(resume)
+        achievement_score = self._calculate_achievement_score(resume)
+        
+        # Check for existence of experience
+        experience_list = resume.extracted_experience or []
+        has_experience = len(experience_list) > 0
+        
+        # Dynamic weighted scoring based on experience presence
+        if has_experience:
+            # Case: Experience exists (Experience 15%, Skills 60%)
+            experience_score = self._calculate_experience_score(resume)
+            total_score = (
+                (skills_score * 0.60) +      # Skills
+                (experience_score * 0.15) +  # Experience
+                (projects_score * 0.10) +    # Projects
+                (education_score * 0.10) +   # Education
+                (cert_score * 0.03) +       # Certifications
+                (structure_score * 0.01) +  # Structure
+                (achievement_score * 0.01)   # Achievements
+            )
+        else:
+            # Case: Experience does NOT exist (Skills weight increased to 75%)
+            experience_score = 0  # No experience score
+            total_score = (
+                (skills_score * 0.75) +      # Skills (increased weight)
+                (projects_score * 0.10) +    # Projects
+                (education_score * 0.10) +   # Education
+                (cert_score * 0.03) +       # Certifications
+                (structure_score * 0.01) +  # Structure
+                (achievement_score * 0.01)   # Achievements
+            )
+        
+        # Store individual scores
+        analysis.skills_score = skills_score
+        analysis.experience_score = experience_score
+        analysis.education_score = education_score
+        
+        # Store new score components
+        analysis.projects_score = projects_score
+        analysis.structure_score = structure_score
+        analysis.certification_score = cert_score
+        analysis.achievement_score = achievement_score
+        
+        # Store overall score
+        analysis.overall_score = round(total_score, 2)
+        
+        # Store completeness for backward compatibility
+        analysis.completeness_score = self._calculate_completeness_score(resume)
+        
+        analysis.save()
+
+    def _calculate_skills_score(self, resume):
+        """Calculate skills score based on number and quality of skills"""
+        skills_count = len(resume.extracted_skills) if resume.extracted_skills else 0
+        # Base score: 5 points per skill, max 100
+        base_score = min(100, skills_count * 5)
+        
+        # Bonus for diverse skill categories
+        if skills_count >= 10:
+            return min(100, base_score + 10)
+        elif skills_count >= 5:
+            return min(100, base_score + 5)
+        return base_score
+    
+    def _calculate_experience_score(self, resume):
+        """Calculate experience score based on work experience"""
+        exp_count = len(resume.extracted_experience) if resume.extracted_experience else 0
+        # Base score: 20 points per experience entry, max 100
+        return min(100, exp_count * 20)
+    
+    def _calculate_projects_score(self, resume):
+        """Calculate projects score from resume text"""
+        text = resume.raw_text or ""
+        text_lower = text.lower()
+        
+        project_keywords = [
+            'project', 'portfolio', 'developed', 'built', 'created', 'designed',
+            'implemented', 'launched', 'deployed', 'application', 'website',
+            'software', 'system', 'platform', 'tool', 'app'
+        ]
+        
+        project_count = sum(1 for keyword in project_keywords if keyword in text_lower)
+        return min(100, project_count * 10)
+    
+    def _calculate_education_score(self, resume):
+        """Calculate education score based on education entries"""
+        edu_count = len(resume.extracted_education) if resume.extracted_education else 0
+        # Base score: 25 points per education entry, max 100
+        return min(100, edu_count * 25)
+    
+    def _calculate_structure_score(self, resume):
+        """Calculate structure score based on resume organization"""
+        text = resume.raw_text or ""
+        score = 0
+        
+        # Check for common resume sections
+        sections = ['skills', 'experience', 'education', 'contact', 'summary', 'objective']
+        text_lower = text.lower()
+        
+        for section in sections:
+            if section in text_lower:
+                score += 15
+        
+        # Bonus for proper formatting
+        if text.count('\n') > 5:  # Has multiple lines
+            score += 10
+        
+        return min(100, score)
+    
+    def _calculate_certification_score(self, resume):
+        """Calculate certification score from resume text"""
+        text = resume.raw_text or ""
+        text_lower = text.lower()
+        
+        cert_keywords = [
+            'certified', 'certificate', 'certification', 'license', 'accredited',
+            'pmp', 'aws certified', 'google certified', 'microsoft certified',
+            'cisco', 'comptia', 'iso', 'professional certification'
+        ]
+        
+        cert_count = sum(1 for keyword in cert_keywords if keyword in text_lower)
+        return min(100, cert_count * 20)
+    
+    def _calculate_achievement_score(self, resume):
+        """Calculate achievement score from resume text"""
+        text = resume.raw_text or ""
+        text_lower = text.lower()
+        
+        achievement_keywords = [
+            'achieved', 'awarded', 'recognized', 'honor', 'award', 'trophy',
+            'promotion', 'increased', 'improved', 'optimized', 'reduced',
+            'saved', 'generated', 'led', 'managed', 'won', 'success'
+        ]
+        
+        achievement_count = sum(1 for keyword in achievement_keywords if keyword in text_lower)
+        return min(100, achievement_count * 8)
+    
+    def _calculate_completeness_score(self, resume):
+        """Calculate completeness score for backward compatibility"""
         completeness_score = 0
         if resume.extracted_skills:
             completeness_score += 25
@@ -156,29 +304,7 @@ class ResumeUploadView(generics.CreateAPIView):
             completeness_score += 25
         if resume.extracted_contact_info:
             completeness_score += 25
-        analysis.completeness_score = completeness_score
-        
-        # Skills score (based on number of skills)
-        skills_count = len(resume.extracted_skills) if resume.extracted_skills else 0
-        analysis.skills_score = min(100, skills_count * 5)
-        
-        # Experience score (simplified)
-        exp_count = len(resume.extracted_experience) if resume.extracted_experience else 0
-        analysis.experience_score = min(100, exp_count * 20)
-        
-        # Education score
-        edu_count = len(resume.extracted_education) if resume.extracted_education else 0
-        analysis.education_score = min(100, edu_count * 25)
-        
-        # Overall score (average)
-        analysis.overall_score = (
-            analysis.completeness_score + 
-            analysis.skills_score + 
-            analysis.experience_score + 
-            analysis.education_score
-        ) / 4
-        
-        analysis.save()
+        return completeness_score
 
 
 class ResumeListView(generics.ListAPIView):

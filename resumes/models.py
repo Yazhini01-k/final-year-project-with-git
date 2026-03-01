@@ -22,6 +22,11 @@ class Resume(models.Model):
     extracted_experience = models.JSONField(default=list, blank=True)
     extracted_contact_info = models.JSONField(default=dict, blank=True)
     
+    # NEW: Additional extracted information
+    extracted_projects = models.JSONField(default=list, blank=True)
+    extracted_certificates = models.JSONField(default=list, blank=True)
+    extracted_achievements = models.JSONField(default=list, blank=True)
+    
     # ML processing data
     feature_vector = models.JSONField(default=list, blank=True)
     skill_keywords = models.JSONField(default=list, blank=True)
@@ -195,6 +200,12 @@ class ResumeAnalysis(models.Model):
     experience_score = models.FloatField(default=0.0)  # 0-100
     education_score = models.FloatField(default=0.0)  # 0-100
     overall_score = models.FloatField(default=0.0)  # 0-100
+    
+    # New detailed score components
+    projects_score = models.FloatField(default=0.0)  # 0-100
+    structure_score = models.FloatField(default=0.0)  # 0-100
+    certification_score = models.FloatField(default=0.0)  # 0-100
+    achievement_score = models.FloatField(default=0.0)  # 0-100
     
     # Recommendations
     missing_skills = models.JSONField(default=list, blank=True)

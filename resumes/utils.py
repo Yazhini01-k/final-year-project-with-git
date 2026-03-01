@@ -103,7 +103,11 @@ class ResumeParser:
             'extracted_skills': self._extract_skills(text, processed_text),
             'extracted_education': self._extract_education(text),
             'extracted_experience': self._extract_experience(text),
-            'extracted_contact_info': self._extract_contact_info(text)
+            'extracted_contact_info': self._extract_contact_info(text),
+            # NEW: Additional extractions
+            'extracted_projects': self._extract_projects(text),
+            'extracted_certificates': self._extract_certificates(text),
+            'extracted_achievements': self._extract_achievements(text)
         }
     
     def _preprocess_text(self, text):
@@ -162,7 +166,7 @@ class ResumeParser:
         
         # Look for education patterns
         education_patterns = [
-            r'(bachelor|master|phd|doctorate|b\.tech|m\.tech|b\.sc|m\.sc|mba).*?(\d{4})',
+            r'(bachelor|master|phd|doctorate|b\.tech|m\.tech|b\.sc|m\.sc|mba|b\.e).*?(\d{4})',
             r'(university|college|institute).*?(bachelor|master|phd|degree)',
             r'(engineering|computer science|information technology).*?(degree|bachelor|master)'
         ]
@@ -197,6 +201,89 @@ class ResumeParser:
                     experience.append(match)
         
         return list(set(experience))
+    
+    def _extract_projects(self, text):
+        """Extract project information from resume"""
+        projects = []
+        text_lower = text.lower()
+        
+        # Project section patterns
+        project_section_patterns = [
+            r'projects[:\s]*(.*?)(?:experience|education|skills|$)',
+            r'personal projects[:\s]*(.*?)(?:experience|education|skills|$)',
+            r'academic projects[:\s]*(.*?)(?:experience|education|skills|$)'
+        ]
+        
+        # Extract project sections
+        for pattern in project_section_patterns:
+            matches = re.findall(pattern, text_lower, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                projects.append(match.strip())
+        
+        # Individual project patterns
+        project_patterns = [
+            r'[-•*]\s*([^.!?]*?[a-zA-Z][^.!?]*?(?:project|app|system|platform|tool|application)[^.!?]*)',
+            r'([^.!?]*?(?:developed|built|created|designed|implemented|launched)[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'([^.!?]*?(?:website|web app|mobile app|software|database)[^.!?]*?[a-zA-Z][^.!?]*)'
+        ]
+        
+        for pattern in project_patterns:
+            matches = re.findall(pattern, text_lower, re.IGNORECASE)
+            for match in matches:
+                if len(match.strip()) > 10:  # Filter out very short matches
+                    projects.append(match.strip())
+        
+        return list(set(projects))
+    
+    def _extract_certificates(self, text):
+        """Extract certificate information from resume"""
+        certificates = []
+        text_lower = text.lower()
+        
+        # Certificate patterns
+        cert_patterns = [
+            r'(certified\s+[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'([^.!?]*?certificate[s]?[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'([^.!?]*?certification[s]?[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'(aws certified[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'(google certified[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'(microsoft certified[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'(pmp[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'(cisco[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'(comptia[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'(iso[^.!?]*?[a-zA-Z][^.!?]*)'
+        ]
+        
+        for pattern in cert_patterns:
+            matches = re.findall(pattern, text_lower, re.IGNORECASE)
+            for match in matches:
+                if len(match.strip()) > 5:  # Filter out very short matches
+                    certificates.append(match.strip())
+        
+        return list(set(certificates))
+    
+    def _extract_achievements(self, text):
+        """Extract achievement information from resume"""
+        achievements = []
+        text_lower = text.lower()
+        
+        # Achievement patterns
+        achievement_patterns = [
+            r'[-•*]\s*([^.!?]*?(?:achieved|awarded|recognized|honor|award|trophy)[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'[-•*]\s*([^.!?]*?(?:promotion|increased|improved|optimized|reduced)[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'[-•*]\s*([^.!?]*?(?:saved|generated|led|managed|won|success)[^.!?]*?[a-zA-Z][^.!?]*)',
+            r'([^.!?]*?\d+%[^.!?]*?(?:increase|decrease|improvement|reduction)[^.!?]*)',
+            r'([^.!?]*?\$?\d+(?:,\d{3})*(?:\.\d{2})?[^.!?]*?(?:saved|generated|revenue|profit|cost)[^.!?]*)',
+            r'([^.!?]*?(?:first|top|best|excellent|outstanding)[^.!?]*?[a-zA-Z][^.!?]*)'
+        ]
+        
+        for pattern in achievement_patterns:
+            matches = re.findall(pattern, text_lower, re.IGNORECASE)
+            for match in matches:
+                if len(match.strip()) > 8:  # Filter out very short matches
+                    achievements.append(match.strip())
+        
+        return list(set(achievements))
     
     def _extract_contact_info(self, text):
         """Extract contact information"""

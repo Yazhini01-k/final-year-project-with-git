@@ -253,6 +253,12 @@ class JobMatch(models.Model):
     location_match_score = models.FloatField(default=0.0)
     salary_match_score = models.FloatField(default=0.0)
     
+    # NEW: Additional scoring components
+    projects_match_score = models.FloatField(default=0.0)
+    certification_match_score = models.FloatField(default=0.0)
+    structure_match_score = models.FloatField(default=0.0)
+    achievement_match_score = models.FloatField(default=0.0)
+    
     # Detailed match breakdown
     matched_skills = models.JSONField(default=list, blank=True)
     missing_skills = models.JSONField(default=list, blank=True)

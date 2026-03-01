@@ -24,10 +24,13 @@ class JobRecommendationEngine:
     """
     
     def __init__(self):
-        self.skill_weight = 0.6  # 60% weight for skills
-        self.experience_weight = 0.2  # 20% weight for experience
-        self.location_weight = 0.1  # 10% weight for location
-        self.salary_weight = 0.1  # 10% weight for salary
+        # Use same scoring formula as resume scoring
+        self.skill_weight = 0.75      # 75% weight for skills
+        self.projects_weight = 0.10   # 10% weight for projects
+        self.education_weight = 0.10  # 10% weight for education
+        self.certification_weight = 0.03  # 3% weight for certifications
+        self.structure_weight = 0.01   # 1% weight for structure
+        self.achievement_weight = 0.01  # 1% weight for achievements
     
     def get_user_recommendations(self, user, limit=10, min_score=30.0):
         """
@@ -65,9 +68,11 @@ class JobRecommendationEngine:
                     defaults={
                         'overall_score': match_result['overall_score'],
                         'skills_match_score': match_result['skills_score'],
-                        'experience_match_score': match_result['experience_score'],
-                        'location_match_score': match_result['location_score'],
-                        'salary_match_score': match_result['salary_score'],
+                        'projects_match_score': match_result['projects_score'],
+                        'education_match_score': match_result['education_score'],
+                        'certification_match_score': match_result['certification_score'],
+                        'structure_match_score': match_result['structure_score'],
+                        'achievement_match_score': match_result['achievement_score'],
                         'matched_skills': match_result['matched_skills'],
                         'missing_skills': match_result['missing_skills'],
                         'skill_match_details': match_result['skill_details'],
@@ -81,9 +86,11 @@ class JobRecommendationEngine:
                     # Update existing match with new scores
                     job_match.overall_score = match_result['overall_score']
                     job_match.skills_match_score = match_result['skills_score']
-                    job_match.experience_match_score = match_result['experience_score']
-                    job_match.location_match_score = match_result['location_score']
-                    job_match.salary_match_score = match_result['salary_score']
+                    job_match.projects_match_score = match_result['projects_score']
+                    job_match.education_match_score = match_result['education_score']
+                    job_match.certification_match_score = match_result['certification_score']
+                    job_match.structure_match_score = match_result['structure_score']
+                    job_match.achievement_match_score = match_result['achievement_score']
                     job_match.matched_skills = match_result['matched_skills']
                     job_match.missing_skills = match_result['missing_skills']
                     job_match.skill_match_details = match_result['skill_details']
@@ -109,54 +116,64 @@ class JobRecommendationEngine:
     
     def _calculate_job_match(self, resume, job, user_preferences):
         """
-        Calculate detailed match score between resume and job
+        Calculate detailed match score between resume and job using same formula as resume scoring
         """
-        # Skills matching (60% weight)
+        # Skills matching (75% weight)
         skills_score, matched_skills, missing_skills, skill_details = self._calculate_skills_match(
             resume.extracted_skills, job.required_skills, job.preferred_skills
         )
         
-        # Experience matching (20% weight)
-        experience_score = self._calculate_experience_match(
-            resume.extracted_experience, job.experience_level
+        # Projects matching (10% weight) - NEW
+        projects_score = self._calculate_projects_match(
+            resume.extracted_projects, job.description
         )
         
-        # Location matching (10% weight)
-        location_score = self._calculate_location_match(
-            user_preferences.get('preferred_locations', []), job.location
+        # Education matching (10% weight)
+        education_score = self._calculate_education_match(
+            resume.extracted_education, job.description
         )
         
-        # Salary matching (10% weight)
-        salary_score = self._calculate_salary_match(
-            user_preferences.get('salary_min'), user_preferences.get('salary_max'),
-            job.salary_min, job.salary_max
+        # Certifications matching (3% weight) - NEW
+        certification_score = self._calculate_certification_match(
+            resume.extracted_certificates, job.description
         )
         
-        # Calculate overall score
+        # Structure matching (1% weight) - NEW
+        structure_score = self._calculate_structure_match(resume)
+        
+        # Achievement matching (1% weight) - NEW
+        achievement_score = self._calculate_achievement_match(
+            resume.extracted_achievements, job.description
+        )
+        
+        # Calculate overall score using same formula as resume scoring
         overall_score = (
-            skills_score * self.skill_weight +
-            experience_score * self.experience_weight +
-            location_score * self.location_weight +
-            salary_score * self.salary_weight
+            (skills_score * 0.75) +      # Skills (75%)
+            (projects_score * 0.10) +    # Projects (10%)
+            (education_score * 0.10) +   # Education (10%)
+            (certification_score * 0.03) + # Certifications (3%)
+            (structure_score * 0.01) +   # Structure (1%)
+            (achievement_score * 0.01)   # Achievements (1%)
         )
+        
+        # Determine confidence level
+        confidence = min(1.0, overall_score / 100.0)
         
         # Generate match reason
         reason = self._generate_match_reason(
-            skills_score, experience_score, location_score, salary_score,
-            len(matched_skills), len(job.required_skills)
-        )
-        
-        # Calculate confidence level
-        confidence = self._calculate_confidence(
-            skills_score, len(matched_skills), len(job.required_skills)
+            skills_score, projects_score, education_score, 
+            certification_score, structure_score, achievement_score,
+            matched_skills, missing_skills
         )
         
         return {
             'overall_score': round(overall_score, 2),
-            'skills_score': round(skills_score, 2),
-            'experience_score': round(experience_score, 2),
-            'location_score': round(location_score, 2),
-            'salary_score': round(salary_score, 2),
+            'skills_score': skills_score,
+            'projects_score': projects_score,
+            'education_score': education_score,
+            'certification_score': certification_score,
+            'structure_score': structure_score,
+            'achievement_score': achievement_score,
             'matched_skills': matched_skills,
             'missing_skills': missing_skills,
             'skill_details': skill_details,
@@ -329,34 +346,53 @@ class JobRecommendationEngine:
             'remote_work_preference': candidate_profile.remote_work_preference
         }
     
-    def _generate_match_reason(self, skills_score, experience_score, location_score, 
-                              salary_score, matched_count, required_count):
+    def _generate_match_reason(self, skills_score, projects_score, education_score, 
+                              certification_score, structure_score, achievement_score,
+                              matched_skills, missing_skills):
         """
-        Generate human-readable match reason
+        Generate human-readable match reason using new scoring components
         """
         reasons = []
         
+        # Skills analysis
         if skills_score >= 70:
-            reasons.append(f"Strong skills match ({matched_count}/{required_count} skills)")
+            reasons.append(f"Strong skills match ({len(matched_skills)} skills matched)")
         elif skills_score >= 40:
-            reasons.append(f"Good skills match ({matched_count}/{required_count} skills)")
+            reasons.append(f"Good skills match ({len(matched_skills)} skills matched)")
         elif skills_score > 0:
-            reasons.append(f"Partial skills match ({matched_count}/{required_count} skills)")
+            reasons.append(f"Partial skills match ({len(matched_skills)} skills matched)")
         
-        if experience_score >= 75:
-            reasons.append("Experience level matches requirements")
-        elif experience_score >= 50:
-            reasons.append("Experience level is acceptable")
+        # Projects analysis
+        if projects_score >= 70:
+            reasons.append("Relevant project experience")
+        elif projects_score >= 40:
+            reasons.append("Good project alignment")
         
-        if location_score >= 75:
-            reasons.append("Location matches preferences")
-        elif location_score > 0:
-            reasons.append("Location is acceptable")
+        # Education analysis
+        if education_score >= 70:
+            reasons.append("Education matches requirements")
+        elif education_score >= 40:
+            reasons.append("Education is acceptable")
         
-        if salary_score >= 75:
-            reasons.append("Salary expectations align")
-        elif salary_score > 0:
-            reasons.append("Salary may be negotiable")
+        # Certification analysis
+        if certification_score >= 70:
+            reasons.append("Strong certification match")
+        elif certification_score >= 40:
+            reasons.append("Relevant certifications")
+        
+        # Achievement analysis
+        if achievement_score >= 70:
+            reasons.append("Impressive achievements")
+        elif achievement_score >= 40:
+            reasons.append("Good achievement record")
+        
+        # Structure analysis
+        if structure_score >= 70:
+            reasons.append("Well-structured resume")
+        
+        # Missing skills warning
+        if missing_skills and len(missing_skills) > 2:
+            reasons.append(f"Missing key skills: {', '.join(missing_skills[:3])}")
         
         return "; ".join(reasons) if reasons else "Basic match found"
     
@@ -380,6 +416,137 @@ class JobRecommendationEngine:
             confidence += match_ratio * 0.2
         
         return min(confidence, 1.0)
+    
+    def _calculate_projects_match(self, resume_projects, job_description):
+        """
+        Calculate projects match between resume projects and job description
+        """
+        if not resume_projects or not job_description:
+            return 50.0
+        
+        job_desc_lower = job_description.lower()
+        project_keywords = ['project', 'developed', 'built', 'created', 'designed', 'implemented']
+        
+        match_count = 0
+        total_projects = len(resume_projects)
+        
+        for project in resume_projects:
+            if isinstance(project, str):
+                project_lower = project.lower()
+                # Check if project contains relevant keywords
+                if any(keyword in project_lower for keyword in project_keywords):
+                    match_count += 1
+                # Check if project aligns with job description
+                elif any(word in project_lower for word in job_desc_lower.split() if len(word) > 3):
+                    match_count += 0.5
+        
+        if total_projects > 0:
+            return min(100.0, (match_count / total_projects) * 100)
+        return 0.0
+    
+    def _calculate_education_match(self, resume_education, job_description):
+        """
+        Calculate education match between resume education and job requirements
+        """
+        if not resume_education or not job_description:
+            return 50.0
+        
+        job_desc_lower = job_description.lower()
+        education_keywords = ['bachelor', 'master', 'phd', 'degree', 'university', 'college']
+        
+        match_count = 0
+        total_education = len(resume_education)
+        
+        for edu in resume_education:
+            if isinstance(edu, str):
+                edu_lower = edu.lower()
+                # Check if education contains relevant keywords
+                if any(keyword in edu_lower for keyword in education_keywords):
+                    match_count += 1
+                # Check if education aligns with job description
+                elif any(word in edu_lower for word in job_desc_lower.split() if len(word) > 3):
+                    match_count += 0.5
+        
+        if total_education > 0:
+            return min(100.0, (match_count / total_education) * 100)
+        return 0.0
+    
+    def _calculate_certification_match(self, resume_certificates, job_description):
+        """
+        Calculate certification match between resume certificates and job requirements
+        """
+        if not resume_certificates or not job_description:
+            return 50.0
+        
+        job_desc_lower = job_description.lower()
+        cert_keywords = ['certified', 'certificate', 'certification', 'aws', 'google', 'microsoft']
+        
+        match_count = 0
+        total_certs = len(resume_certificates)
+        
+        for cert in resume_certificates:
+            if isinstance(cert, str):
+                cert_lower = cert.lower()
+                # Check if certification contains relevant keywords
+                if any(keyword in cert_lower for keyword in cert_keywords):
+                    match_count += 1
+                # Check if certification aligns with job description
+                elif any(word in cert_lower for word in job_desc_lower.split() if len(word) > 3):
+                    match_count += 0.5
+        
+        if total_certs > 0:
+            return min(100.0, (match_count / total_certs) * 100)
+        return 0.0
+    
+    def _calculate_structure_match(self, resume):
+        """
+        Calculate resume structure score (organization and formatting)
+        """
+        text = resume.raw_text or ""
+        if not text:
+            return 0.0
+        
+        score = 0
+        sections = ['skills', 'experience', 'education', 'contact', 'summary', 'objective']
+        text_lower = text.lower()
+        
+        # Check for common resume sections
+        for section in sections:
+            if section in text_lower:
+                score += 15
+        
+        # Bonus for proper formatting
+        if text.count('\n') > 5:
+            score += 10
+        
+        return min(100.0, score)
+    
+    def _calculate_achievement_match(self, resume_achievements, job_description):
+        """
+        Calculate achievement match between resume achievements and job requirements
+        """
+        if not resume_achievements or not job_description:
+            return 50.0
+        
+        job_desc_lower = job_description.lower()
+        achievement_keywords = ['achieved', 'awarded', 'recognized', 'increased', 'improved', 'led']
+        
+        match_count = 0
+        total_achievements = len(resume_achievements)
+        
+        for achievement in resume_achievements:
+            if isinstance(achievement, str):
+                ach_lower = achievement.lower()
+                # Check if achievement contains relevant keywords
+                if any(keyword in ach_lower for keyword in achievement_keywords):
+                    match_count += 1
+                # Check if achievement aligns with job description
+                elif any(word in ach_lower for word in job_desc_lower.split() if len(word) > 3):
+                    match_count += 0.5
+        
+        if total_achievements > 0:
+            return min(100.0, (match_count / total_achievements) * 100)
+        return 0.0
     
     def refresh_recommendations_for_user(self, user):
         """
